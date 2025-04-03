@@ -1,0 +1,86 @@
+---
+- name: Create a VirtualBox VM using VBoxManage
+  hosts: localhost
+  tasks:
+    - name: Check if WSL is available
+      command: "/mnt/c/Windows/System32/wsl.exe --list --verbose"
+      register: wsl_check
+      ignore_errors: true
+
+    - name: Show WSL check result
+      debug:
+        var: wsl_check
+
+    - name: Check if VDI already exists
+      stat:
+        path: "/mnt/c/Users/Public/VirtualBox VMs/AnsibleVM/AnsibleVM.vd>      register: vdi_check
+
+    - name: Remove existing VDI if it exists
+      file:
+        path: "/mnt/c/Users/Public/VirtualBox VMs/AnsibleVM/AnsibleVM.vd>        state: absent
+      when: vdi_check.stat.exists
+
+    - name: Check if VM settings file exists
+      stat:
+        path: "/mnt/c/Users/Public/VirtualBox VMs/AnsibleVM/AnsibleVM.vb>      register: vm_check
+
+    - name: Remove existing VM settings file if it exists
+      file:
+        path: "/mnt/c/Users/Public/VirtualBox VMs/AnsibleVM/AnsibleVM.vb>        state: absent
+      when: vm_check.stat.exists
+
+    - name: Create a new VM
+          command: >
+            "/mnt/c/Program Files/Oracle/VirtualBox/VBoxManage.exe" createvm
+            --name "AnsibleVM" --ostype "Ubuntu_64" --register
+          register: create_vm_output
+          ignore_errors: true
+
+    - name: Configure memory and CPU
+      command: >
+        "/mnt/c/Program Files/Oracle/VirtualBox/VBoxManage.exe" modifyvm>        --memory 4096 --cpus 2 --nic1 nat
+
+    - name: Create a virtual hard disk
+      command: >
+        "/mnt/c/Program Files/Oracle/VirtualBox/VBoxManage.exe" createme>        --filename "/mnt/c/Users/Public/VirtualBox VMs/AnsibleVM/Ansible>        --size 20000 --format VDI
+
+    - name: Add SATA controller to the VM
+      command: >
+        "/mnt/c/Program Files/Oracle/VirtualBox/VBoxManage.exe" storagec>        --name "SATA Controller" --add sata --controller IntelAhci
+
+    - name: Attach virtual hard disk
+      command: >
+        "/mnt/c/Program Files/Oracle/VirtualBox/VBoxManage.exe" storagea>        --storagectl "SATA Controller" --port 0 --device 0 --type hdd
+        --medium "/mnt/c/Users/Public/VirtualBox VMs/AnsibleVM/AnsibleVM>
+    - name: Attach ISO file (Ubuntu Server)
+      command: >
+        "/mnt/c/Program Files/Oracle/VirtualBox/VBoxManage.exe" storagea>        --storagectl "SATA Controller" --port 1 --device 0 --type dvddri>        --medium "/mnt/c/Users/Public/ISO/ubuntu-24.04.1-live-server-amd>
+
+    - name: Create cloud-init configuration file
+          copy:
+            content: |
+              #cloud-config
+              hostname: ansiblevm
+              ssh_pwauth: True
+              users:
+                - name: ubuntu
+                  sudo: ALL=(ALL) NOPASSWD:ALL
+                  shell: /bin/bash
+                  ssh_authorized_keys:
+                    - "ssh-rsa AAAAB3NzaC1yc2EAAAABIwAAAQEArhDSVQbL5jmqlpzFh>          packages:
+                - vim
+                - htop
+              runcmd:
+               - echo "Cloud-init script completed"
+            dest: "/mnt/c/Users/Public/VirtualBox VMs/AnsibleVM/cloud-init.c>        mode: "0644"
+
+    - name: Create ISO image from cloud-init config
+      command: >
+        "/mnt/c/Windows/System32/wsl.exe" genisoimage -output
+        "/mnt/c/Users/Public/VirtualBox VMs/AnsibleVM/cloud-init.iso"
+        -volid CIDATA -joliet -rock
+        "/mnt/c/Users/Public/VirtualBox VMs/AnsibleVM/cloud-init.cfg"
+
+    - name: Attach cloud-init ISO to VM
+      command: >
+        "/mnt/c/Program Files/Oracle/VirtualBox/VBoxManage.exe" storagea>        --storagectl "SATA Controller" --port 2 --device 0 --type dvddri>        --medium "/mnt/c/Users/Public/VirtualBox VMs/AnsibleVM/cloud-ini>
